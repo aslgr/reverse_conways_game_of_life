@@ -272,3 +272,14 @@ void add_model_blocking_clause(const int *live_cells, int live_cell_count,
 
     (*clauses)[(*clause_count)-1][0] = clause_index;
 }
+
+void free_clauses(int **clauses, int clause_count)
+{
+    if (clauses == NULL)
+        return;
+
+    for (int i = 0; i < clause_count; i++)
+        free(clauses[i]);
+
+    free(clauses);
+}

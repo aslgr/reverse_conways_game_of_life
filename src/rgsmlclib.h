@@ -13,4 +13,6 @@ void build_predecessor_cnf(const int *target_grid, int ***clauses, int *clause_c
 void add_model_blocking_clause(const int *live_cells, int live_cell_count,
                                int ***clauses, int *clause_count);
 
+void free_clauses(int **clauses, int clause_count);
+
 #endif

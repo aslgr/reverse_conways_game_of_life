@@ -8,50 +8,98 @@ int main()
 {
     int rows, cols, clause_count = 0, found_solution = 0;
 
-    // Lendo os valores rows e cols
-    scanf("%d %d", &rows, &cols);
+    // Lê as dimensões do tabuleiro
+    if (scanf("%d %d", &rows, &cols) != 2) {
+        fprintf(stderr, "Error: Failed to read grid dimensions.\n");
+        return EXIT_FAILURE;
+    }
+
+    if (rows <= 0 || cols <= 0) {
+        fprintf(stderr, "Error: Grid dimensions must be positive.\n");
+        return EXIT_FAILURE;
+    }
+
+    size_t cell_count = (size_t) rows * (size_t) cols;
 
     int *target_grid, *best_predecessor, *live_cells, **clauses = NULL;
 
-    // Lendo o tabuleiro de entrada
-    if((target_grid = (int *) malloc(rows * cols * sizeof(int))) != NULL) {
-        for(int i = 0; i < rows; i++) {
-            for(int j = 0; j < cols; j++) {
-                scanf("%d", &target_grid[i * cols + j]);
+    // Alocando espaço para o tabuleiro alvo
+    target_grid = malloc(cell_count * sizeof *target_grid);
+
+    if (target_grid == NULL) {
+        fprintf(stderr, "Error: Failed to allocate memory for the target grid.\n");
+        return EXIT_FAILURE;
+    }
+
+    // Lê o tabuleiro alvo
+    for (int row = 0; row < rows; row++) 
+    {
+        for (int col = 0; col < cols; col++) 
+        {
+            int cell;
+
+            if (scanf("%d", &cell) != 1) {
+                fprintf(stderr, "Error: Failed to read grid cell.\n");
+                free(target_grid);
+                return EXIT_FAILURE;
             }
+
+            if (cell != 0 && cell != 1) {
+                fprintf(stderr, "Error: Grid cells must contain only 0 or 1.\n");
+                free(target_grid);
+                return EXIT_FAILURE;
+            }
+
+            target_grid[row * cols + col] = cell;
         }
     }
-    else {
-        fprintf(stderr, "Error: Failed to allocate memory for the target grid.\n");
-        return 1;
+
+    // Verifica se todas as células da borda estão mortas
+    for (int row = 0; row < rows; row++) 
+    {
+        if (target_grid[row * cols] != 0 || target_grid[row * cols + (cols - 1)] != 0) {
+            fprintf(stderr, "Error: Border cells must be dead.\n");
+            free(target_grid);
+            return EXIT_FAILURE;
+        }
+    }
+
+    for (int col = 0; col < cols; col++) 
+    {
+        if (target_grid[col] != 0 || target_grid[(rows - 1) * cols + col] != 0) {
+            fprintf(stderr, "Error: Border cells must be dead.\n");
+            free(target_grid);
+            return EXIT_FAILURE;
+        }
     }
 
     // Alocando espaço para o tabuleiro resposta
-    if((best_predecessor = (int *) malloc(rows * cols * sizeof(int))) != NULL) {
-        for(int i = 0; i < rows; i++) {
-            for(int j = 0; j < cols; j++) {
-                best_predecessor[i * cols + j] = 0;
-            }
-        }
-    }
-    else {
+    best_predecessor = calloc(cell_count, sizeof *best_predecessor);
+
+    if (best_predecessor == NULL) {
         fprintf(stderr, "Error: Failed to allocate memory for the predecessor grid.\n");
-        return 1;
+        free(target_grid);
+        return EXIT_FAILURE;
     }
 
     // Alocando espaço para o vetor de células vivas
-    if((live_cells = (int *) malloc(rows * cols * sizeof(int))) == NULL) {
+    live_cells = malloc(cell_count * sizeof *live_cells);
+
+    if (live_cells == NULL) {
         fprintf(stderr, "Error: Failed to allocate memory for the live-cell buffer.\n");
-        return 1;
+        free(target_grid);
+        free(best_predecessor);
+        return EXIT_FAILURE;
     }
 
     // Cria as cláusulas CNF que representam os predecessores válidos do tabuleiro alvo
     build_predecessor_cnf(target_grid, &clauses, &clause_count, rows, cols);
 
-    printf("Searching for a minimum predecessor...\n");
+    fprintf(stderr, "Searching for a minimum predecessor...\n");
 
     // Inicia o solver
     kissat *solver = kissat_init();
+    
     // Silencia as mensagens do kissat
     kissat_set_option(solver, "quiet", 1);
 
@@ -123,12 +171,18 @@ int main()
 
     if (!found_solution)
     {
-        printf("\nUNSAT\n");
+        printf("UNSAT\n");
     } else {
-        printf("\nResult:\n\n%d %d\n", rows, cols);
+        printf("%d %d\n", rows, cols);
         print_grid(best_predecessor, rows, cols);
-        printf("\n");
     }
 
-    return 0;
+    free(target_grid);
+    free(best_predecessor);
+    free(live_cells);
+
+    // Libera todas as cláusulas e a matriz que as armazena
+    free_clauses(clauses, clause_count);
+
+    return EXIT_SUCCESS;
 }
