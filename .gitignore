@@ -1,0 +1,9 @@
+ConwayGoLRGSMLC
+obj/
+*.o
+kissat/
+.vscode/
+*.tgz
+*.tar.gz
+.DS_Store
+Thumbs.db

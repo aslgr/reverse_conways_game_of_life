@@ -273,6 +273,56 @@ void add_model_blocking_clause(const int *live_cells, int live_cell_count,
     (*clauses)[(*clause_count)-1][0] = clause_index;
 }
 
+// Conta o número de vizinhos vivos de uma célula
+static int count_live_neighbors(const int *grid, int row, int col, int rows, int cols)
+{
+    int live_neighbors = 0;
+
+    for (int row_offset = -1; row_offset <= 1; row_offset++) 
+    {
+        for (int col_offset = -1; col_offset <= 1; col_offset++) 
+        {
+            if (row_offset == 0 && col_offset == 0)
+                continue;
+
+            int neighbor_row = row + row_offset;
+            int neighbor_col = col + col_offset;
+
+            if (is_valid_cell(neighbor_row, neighbor_col, rows, cols))
+                live_neighbors += grid[neighbor_row * cols + neighbor_col];
+        }
+    }
+
+    return live_neighbors;
+}
+
+// Verifica se o predecessor evolui exatamente para o tabuleiro alvo
+bool is_valid_predecessor(const int *predecessor, const int *target_grid, int rows, int cols)
+{
+    for (int row = 0; row < rows; row++)
+    {
+        for (int col = 0; col < cols; col++)
+        {
+            int index = row * cols + col;
+
+            int live_neighbors = count_live_neighbors(predecessor, row, col, rows, cols);
+
+            int next_state;
+
+            if (predecessor[index] == 1) {
+                next_state = (live_neighbors == 2 || live_neighbors == 3);
+            } else {
+                next_state = (live_neighbors == 3);
+            }
+
+            if (next_state != target_grid[index])
+                return false;
+        }
+    }
+
+    return true;
+}
+
 void free_clauses(int **clauses, int clause_count)
 {
     if (clauses == NULL)

@@ -169,9 +169,13 @@ int main()
     
     kissat_release(solver);
 
-    if (!found_solution)
-    {
+    int exit_status = EXIT_SUCCESS;
+
+    if (!found_solution) {
         printf("UNSAT\n");
+    } else if (!is_valid_predecessor(best_predecessor, target_grid, rows, cols)) {
+        fprintf(stderr,"Error: Solver produced an invalid predecessor.\n");
+        exit_status = EXIT_FAILURE;
     } else {
         printf("%d %d\n", rows, cols);
         print_grid(best_predecessor, rows, cols);
@@ -184,5 +188,5 @@ int main()
     // Libera todas as cláusulas e a matriz que as armazena
     free_clauses(clauses, clause_count);
 
-    return EXIT_SUCCESS;
+    return exit_status;
 }
