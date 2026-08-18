@@ -13,6 +13,7 @@ typedef enum {
     LIFE
 } GameOfLifeRule;
 
+// Imprime o tabuleiro no formato esperado pela saída do programa
 void print_grid(const int *grid, int rows, int cols)
 {
     for(int i = 0; i < rows; i++)
@@ -24,6 +25,7 @@ void print_grid(const int *grid, int rows, int cols)
     }
 }
 
+// Adiciona uma nova cláusula à matriz dinâmica de cláusulas
 static void add_clause_row(int ***clauses, int *clause_count, int clause_capacity)
 {
     // Realoca memória para uma nova linha
@@ -44,6 +46,7 @@ static void add_clause_row(int ***clauses, int *clause_count, int clause_capacit
     (*clause_count)++;
 }
 
+// Adiciona uma cláusula CNF ao solver Kissat
 static void write_clause(kissat *solver, int *clause, int size)
 {
     for(int i = 0; i < size; i++)
@@ -52,6 +55,7 @@ static void write_clause(kissat *solver, int *clause, int size)
     kissat_add(solver, 0);
 }
 
+// Envia todas as cláusulas CNF armazenadas para o solver Kissat
 void write_all_clauses(kissat *solver, int clause_count, int **clauses)
 {
     for (int i = 0; i < clause_count; i++)
@@ -72,7 +76,7 @@ static bool is_valid_cell(int row, int col, int rows, int cols)
     return row >= 0 && row < rows && col >= 0 && col < cols;
 }
 
-// Operações loneliness, stagnation, overcrowding, preservation e life
+// Gera as cláusulas CNF correspondentes a uma regra do Game of Life para uma célula
 static void encode_rule_constraints(int row, int col, int rows, int cols, int ***clauses,
                                     int *clause_count, GameOfLifeRule rule)
 {
@@ -236,6 +240,7 @@ static void encode_rule_constraints(int row, int col, int rows, int cols, int **
     }
 }
 
+// Gera as restrições CNF que representam todos os predecessores válidos do tabuleiro alvo
 void build_predecessor_cnf(const int *target_grid, int ***clauses, int *clause_count,
                            int rows, int cols)
 {
@@ -260,6 +265,7 @@ void build_predecessor_cnf(const int *target_grid, int ***clauses, int *clause_c
     }
 }
 
+// Adiciona uma cláusula que bloqueia o modelo atual e seus supersets nas próximas buscas
 void add_model_blocking_clause(const int *live_cells, int live_cell_count,
                                int ***clauses, int *clause_count)
 {
@@ -323,6 +329,7 @@ bool is_valid_predecessor(const int *predecessor, const int *target_grid, int ro
     return true;
 }
 
+// Libera a memória utilizada pela matriz dinâmica de cláusulas
 void free_clauses(int **clauses, int clause_count)
 {
     if (clauses == NULL)

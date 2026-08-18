@@ -4,6 +4,12 @@
 #include <time.h>
 #include "rgsmlclib.h"
 
+enum {
+    SAT_RESULT_INTERRUPTED = 0,
+    SAT_RESULT_SAT = 10,
+    SAT_RESULT_UNSAT = 20
+};
+
 int main() 
 {
     int rows, cols, clause_count = 0, found_solution = 0;
@@ -114,11 +120,11 @@ int main()
     clock_t tempo_inicial = clock(); // Captura o tempo inicial
     double tempo_max = 300.0; // Tempo limite em segundos
 
-    while (result == 10)
+    while (result == SAT_RESULT_SAT)
     {
         found_solution = 1;
 
-        // Verificar se o tempo limite foi atingido
+        // Verifica se o tempo limite foi atingido
         double tempo = (double)(clock() - tempo_inicial) / CLOCKS_PER_SEC;
         if (tempo >= tempo_max) 
         {
@@ -171,12 +177,24 @@ int main()
 
     int exit_status = EXIT_SUCCESS;
 
+
     if (!found_solution) {
-        printf("UNSAT\n");
+        if (result == SAT_RESULT_UNSAT) {
+            printf("UNSAT\n");
+        } else if (result == SAT_RESULT_INTERRUPTED) {
+            fprintf(stderr, "Error: SAT solver search was interrupted.\n");
+            exit_status = EXIT_FAILURE;
+        } else {
+            fprintf(stderr, "Error: SAT solver returned an unexpected result.\n");
+            exit_status = EXIT_FAILURE;
+        }
     } else if (!is_valid_predecessor(best_predecessor, target_grid, rows, cols)) {
-        fprintf(stderr,"Error: Solver produced an invalid predecessor.\n");
+        fprintf(stderr, "Error: Solver produced an invalid predecessor.\n");
         exit_status = EXIT_FAILURE;
     } else {
+        if (result == SAT_RESULT_INTERRUPTED)
+            fprintf(stderr, "Warning: Search was interrupted before optimality was proven.\n");
+            
         printf("%d %d\n", rows, cols);
         print_grid(best_predecessor, rows, cols);
     }
