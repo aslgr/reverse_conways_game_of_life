@@ -1,20 +1,16 @@
-#include <stdio.h>
-#include <stdlib.h>
+#ifndef RGSMLCLIB_H
+#define RGSMLCLIB_H
+
 #include <kissat.h>
 
-#define NEIGHBOURS 8
-#define LONELINESS 1
-#define STAGNATION 2
-#define OVERCROWDING 3
-#define PRESERVATION 4
-#define LIFE 5
+void print_grid(const int *grid, int rows, int cols);
 
-// Funções auxiliares
+void write_all_clauses(kissat *solver, int clause_count, int **clauses);
 
-void print_grid(int *grid, int n, int m);
+void build_predecessor_cnf(const int *target_grid, int ***clauses, int *clause_count,
+                           int rows, int cols);
 
-void write_clause_aux(kissat *solver, int n_clauses, int **clauses);
+void add_model_blocking_clause(const int *live_cells, int live_cell_count,
+                               int ***clauses, int *clause_count);
 
-void solve_conway_gol(int *grid, int ***clauses, int *n_clauses, int n, int m);
-
-void add_live_cells_limit(int *live_cells, int count_live_cells, int ***clauses, int *n_clauses, int n, int m);
+#endif
