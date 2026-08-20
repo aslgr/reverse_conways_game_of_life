@@ -4,6 +4,7 @@
 #include "rgsmlclib.h"
 
 #define NEIGHBOURS 8
+#define INITIAL_CLAUSE_CAPACITY 16
 
 typedef enum {
     LONELINESS,
@@ -25,25 +26,34 @@ void print_grid(const int *grid, int rows, int cols)
     }
 }
 
-// Adiciona uma nova cláusula à matriz dinâmica de cláusulas
-static void add_clause_row(int ***clauses, int *clause_count, int clause_capacity)
+// Adiciona uma nova cláusula à base dinâmica de cláusulas
+static void add_clause_row(ClauseDatabase *clauses, int clause_capacity)
 {
-    // Realoca memória para uma nova linha
-    (*clauses) = realloc((*clauses), ((*clause_count) + 1) * sizeof(int *));
-    if ((*clauses) == NULL) {
-        fprintf(stderr, "Error: Failed to reallocate memory for clauses.\n");
-        exit(EXIT_FAILURE);
+    if (clauses->count == clauses->capacity)
+    {
+        size_t new_capacity =
+            clauses->capacity == 0 ? INITIAL_CLAUSE_CAPACITY : clauses->capacity * 2;
+
+        int **new_data = realloc(clauses->data, new_capacity * sizeof *new_data);
+
+        if (new_data == NULL) {
+            fprintf(stderr, "Error: Failed to expand clause database.\n");
+            exit(EXIT_FAILURE);
+        }
+
+        clauses->data = new_data;
+        clauses->capacity = new_capacity;
     }
 
-    // Aloca memória para a nova linha com o número fixo de colunas
-    (*clauses)[(*clause_count)] = malloc(clause_capacity * sizeof(int));
-    if ((*clauses)[*clause_count] == NULL) {
+    clauses->data[clauses->count] = 
+        malloc((size_t) clause_capacity * sizeof *clauses->data[clauses->count]);
+
+    if (clauses->data[clauses->count] == NULL) {
         fprintf(stderr, "Error: Failed to allocate memory for a clause.\n");
         exit(EXIT_FAILURE);
     }
 
-    // Incrementa o número de linhas
-    (*clause_count)++;
+    clauses->count++;
 }
 
 // Adiciona uma cláusula CNF ao solver Kissat
@@ -56,13 +66,13 @@ static void write_clause(kissat *solver, const int *clause, int size)
 }
 
 // Envia todas as cláusulas CNF armazenadas para o solver Kissat
-void write_all_clauses(kissat *solver, int clause_count, int **clauses)
+void write_all_clauses(kissat *solver, const ClauseDatabase *clauses)
 {
-    for (int i = 0; i < clause_count; i++)
+    for (size_t i = 0; i < clauses->count; i++)
     {
-        int literal_count = clauses[i][0];
+        int literal_count = clauses->data[i][0];
 
-        write_clause(solver, &clauses[i][1], literal_count);
+        write_clause(solver, &clauses->data[i][1], literal_count);
     }
 }
 
@@ -73,8 +83,8 @@ static bool is_valid_cell(int row, int col, int rows, int cols)
 }
 
 // Gera as cláusulas CNF correspondentes a uma regra do Game of Life para uma célula
-static void encode_rule_constraints(int row, int col, int rows, int cols, int ***clauses,
-                                    int *clause_count, GameOfLifeRule rule)
+static void encode_rule_constraints(int row, int col, int rows, int cols,
+                                    ClauseDatabase *clauses, GameOfLifeRule rule)
 {
     // Deslocamentos para os 8 vizinhos
     int dx[NEIGHBOURS] = {-1, -1, -1, 0, 0, 1, 1, 1};
@@ -115,17 +125,17 @@ static void encode_rule_constraints(int row, int col, int rows, int cols, int **
             
             if (alive_count == 1) 
             {
-                add_clause_row(clauses, clause_count, NEIGHBOURS+2);
+                add_clause_row(clauses, NEIGHBOURS+2);
 
                 int clause_index = 0;
                 
                 for (int bit = 0; bit < valid_neighbors; bit++)
                 {
                     if (!(comb & (1 << bit)))
-                        (*clauses)[(*clause_count)-1][(clause_index++)+1] = neighbors[bit];
+                        clauses->data[clauses->count-1][(clause_index++)+1] = neighbors[bit];
                 }
 
-                (*clauses)[(*clause_count)-1][0] = clause_index;
+                clauses->data[clauses->count-1][0] = clause_index;
             }
 
         break;
@@ -136,22 +146,22 @@ static void encode_rule_constraints(int row, int col, int rows, int cols, int **
 
             if (alive_count == 2) 
             {
-                add_clause_row(clauses, clause_count, NEIGHBOURS+2);
+                add_clause_row(clauses, NEIGHBOURS+2);
 
                 int clause_index = 0;
 
-                (*clauses)[(*clause_count)-1][(clause_index++)+1] = (row * cols + col + 1);
+                clauses->data[clauses->count-1][(clause_index++)+1] = (row * cols + col + 1);
 
                 for (int bit = 0; bit < valid_neighbors; bit++)
                 {
                     if (comb & (1 << bit)) {
-                        (*clauses)[(*clause_count)-1][(clause_index++)+1] = -neighbors[bit];
+                        clauses->data[clauses->count-1][(clause_index++)+1] = -neighbors[bit];
                     } else {
-                        (*clauses)[(*clause_count)-1][(clause_index++)+1] = neighbors[bit];
+                        clauses->data[clauses->count-1][(clause_index++)+1] = neighbors[bit];
                     }
                 }
 
-                (*clauses)[(*clause_count)-1][0] = clause_index;
+                clauses->data[clauses->count-1][0] = clause_index;
             }
 
         break;
@@ -162,16 +172,16 @@ static void encode_rule_constraints(int row, int col, int rows, int cols, int **
 
             if (alive_count == 4) 
             {
-                add_clause_row(clauses, clause_count, NEIGHBOURS+2);
+                add_clause_row(clauses, NEIGHBOURS+2);
 
                 int clause_index = 0;
 
                 for (int bit = 0; bit < valid_neighbors; bit++) {
                     if (comb & (1 << bit))
-                        (*clauses)[(*clause_count)-1][(clause_index++)+1] = -neighbors[bit];
+                        clauses->data[clauses->count-1][(clause_index++)+1] = -neighbors[bit];
                 }
 
-                (*clauses)[(*clause_count)-1][0] = clause_index;
+                clauses->data[clauses->count-1][0] = clause_index;
             }
 
         break;
@@ -182,22 +192,22 @@ static void encode_rule_constraints(int row, int col, int rows, int cols, int **
 
             if (alive_count == 2) 
             {
-                add_clause_row(clauses, clause_count, NEIGHBOURS+2);
+                add_clause_row(clauses, NEIGHBOURS+2);
 
                 int clause_index = 0;
 
-                (*clauses)[(*clause_count)-1][(clause_index++)+1] = -(row * cols + col + 1);
+                clauses->data[clauses->count-1][(clause_index++)+1] = -(row * cols + col + 1);
 
                 for (int bit = 0; bit < valid_neighbors; bit++)
                 {
                     if (comb & (1 << bit)) {
-                        (*clauses)[(*clause_count)-1][(clause_index++)+1] = -neighbors[bit];
+                        clauses->data[clauses->count-1][(clause_index++)+1] = -neighbors[bit];
                     } else {
-                        (*clauses)[(*clause_count)-1][(clause_index++)+1] = neighbors[bit];
+                        clauses->data[clauses->count-1][(clause_index++)+1] = neighbors[bit];
                     }
                 }
 
-                (*clauses)[(*clause_count)-1][0] = clause_index;
+                clauses->data[clauses->count-1][0] = clause_index;
             }
 
         break;
@@ -208,19 +218,19 @@ static void encode_rule_constraints(int row, int col, int rows, int cols, int **
 
             if (alive_count == 3)
             {
-                add_clause_row(clauses, clause_count, NEIGHBOURS+2);
+                add_clause_row(clauses, NEIGHBOURS+2);
 
                 int clause_index = 0;
 
                 for (int bit = 0; bit < valid_neighbors; bit++) {
                     if (comb & (1 << bit)) {
-                        (*clauses)[(*clause_count)-1][(clause_index++)+1] = -neighbors[bit];
+                        clauses->data[clauses->count-1][(clause_index++)+1] = -neighbors[bit];
                     } else {
-                        (*clauses)[(*clause_count)-1][(clause_index++)+1] = neighbors[bit];
+                        clauses->data[clauses->count-1][(clause_index++)+1] = neighbors[bit];
                     }
                 }
 
-                (*clauses)[(*clause_count)-1][0] = clause_index;
+                clauses->data[clauses->count-1][0] = clause_index;
             }
 
         break; 
@@ -237,25 +247,19 @@ static void encode_rule_constraints(int row, int col, int rows, int cols, int **
 }
 
 // Gera as restrições CNF que representam todos os predecessores válidos do tabuleiro alvo
-void build_predecessor_cnf(const int *target_grid, int ***clauses, int *clause_count,
-                           int rows, int cols)
+void build_predecessor_cnf(const int *target_grid, ClauseDatabase *clauses, int rows, int cols)
 {
     for(int row = 0; row < rows; row++)
     {
         for(int col = 0; col < cols; col++)
         {
             if (target_grid[row * cols + col] == 1) {
-                encode_rule_constraints(row, col, rows, cols, clauses,
-                                        clause_count, LONELINESS);
-                encode_rule_constraints(row, col, rows, cols, clauses,
-                                        clause_count, STAGNATION);
-                encode_rule_constraints(row, col, rows, cols, clauses,
-                                        clause_count, OVERCROWDING);
+                encode_rule_constraints(row, col, rows, cols, clauses, LONELINESS);
+                encode_rule_constraints(row, col, rows, cols, clauses, STAGNATION);
+                encode_rule_constraints(row, col, rows, cols, clauses, OVERCROWDING);
             } else {
-                encode_rule_constraints(row, col, rows, cols, clauses,
-                                        clause_count, PRESERVATION);
-                encode_rule_constraints(row, col, rows, cols, clauses,
-                                        clause_count, LIFE);
+                encode_rule_constraints(row, col, rows, cols, clauses, PRESERVATION);
+                encode_rule_constraints(row, col, rows, cols, clauses, LIFE);
             }
         }
     }
@@ -263,16 +267,16 @@ void build_predecessor_cnf(const int *target_grid, int ***clauses, int *clause_c
 
 // Adiciona uma cláusula que bloqueia o modelo atual e seus supersets nas próximas buscas
 void add_model_blocking_clause(const int *live_cells, int live_cell_count,
-                               int ***clauses, int *clause_count)
+                               ClauseDatabase *clauses)
 {
-    add_clause_row(clauses, clause_count, live_cell_count+1);
+    add_clause_row(clauses, live_cell_count+1);
 
     int clause_index = 0;
 
     for (int i = 0; i < live_cell_count; i++)
-        (*clauses)[(*clause_count)-1][(clause_index++)+1] = -live_cells[i];
+        clauses->data[clauses->count-1][(clause_index++)+1] = -live_cells[i];
 
-    (*clauses)[(*clause_count)-1][0] = clause_index;
+    clauses->data[clauses->count-1][0] = clause_index;
 }
 
 // Conta o número de vizinhos vivos de uma célula
@@ -325,14 +329,18 @@ bool is_valid_predecessor(const int *predecessor, const int *target_grid, int ro
     return true;
 }
 
-// Libera a memória utilizada pela matriz dinâmica de cláusulas
-void free_clauses(int **clauses, int clause_count)
+// Libera a memória utilizada pela base dinâmica de cláusulas
+void free_clauses(ClauseDatabase *clauses)
 {
     if (clauses == NULL)
         return;
 
-    for (int i = 0; i < clause_count; i++)
-        free(clauses[i]);
+    for (size_t i = 0; i < clauses->count; i++)
+        free(clauses->data[i]);
 
-    free(clauses);
+    free(clauses->data);
+
+    clauses->data = NULL;
+    clauses->count = 0;
+    clauses->capacity = 0;
 }

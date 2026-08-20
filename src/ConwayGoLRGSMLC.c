@@ -28,7 +28,7 @@ static void handle_timeout(int signal_number)
 
 int main() 
 {
-    int rows, cols, clause_count = 0, found_solution = 0;
+    int rows, cols, found_solution = 0;
 
     // Lê as dimensões do tabuleiro
     if (scanf("%d %d", &rows, &cols) != 2) {
@@ -43,7 +43,8 @@ int main()
 
     size_t cell_count = (size_t) rows * (size_t) cols;
 
-    int *target_grid, *best_predecessor, *live_cells, **clauses = NULL;
+    int *target_grid, *best_predecessor, *live_cells;
+    ClauseDatabase clauses = {0};
 
     // Alocando espaço para o tabuleiro alvo
     target_grid = malloc(cell_count * sizeof *target_grid);
@@ -115,7 +116,7 @@ int main()
     }
 
     // Cria as cláusulas CNF que representam os predecessores válidos do tabuleiro alvo
-    build_predecessor_cnf(target_grid, &clauses, &clause_count, rows, cols);
+    build_predecessor_cnf(target_grid, &clauses, rows, cols);
 
     // Configura o tratamento do limite de tempo
     if (signal(SIGALRM, handle_timeout) == SIG_ERR) {
@@ -123,7 +124,7 @@ int main()
         free(target_grid);
         free(best_predecessor);
         free(live_cells);
-        free_clauses(clauses, clause_count);
+        free_clauses(&clauses);
         return EXIT_FAILURE;
     }
 
@@ -138,7 +139,7 @@ int main()
     kissat_set_option(solver, "quiet", 1);
 
     // Compartilha as cláusulas obtidas com o solver
-    write_all_clauses(solver, clause_count, clauses);
+    write_all_clauses(solver, &clauses);
 
     // Tenta encontrar uma solução válida
     active_solver = solver;
@@ -191,9 +192,9 @@ int main()
 
         kissat_set_option(solver, "quiet", 1);
 
-        add_model_blocking_clause(live_cells, count_live_cells, &clauses, &clause_count);
+        add_model_blocking_clause(live_cells, count_live_cells, &clauses);
 
-        write_all_clauses(solver, clause_count, clauses);
+        write_all_clauses(solver, &clauses);
 
         // Evita iniciar uma nova busca caso o limite tenha sido atingido entre iterações
         if (timeout_reached) {
@@ -239,7 +240,7 @@ int main()
     free(live_cells);
 
     // Libera todas as cláusulas e a matriz que as armazena
-    free_clauses(clauses, clause_count);
+    free_clauses(&clauses);
 
     return exit_status;
 }
