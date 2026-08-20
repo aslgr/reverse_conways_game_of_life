@@ -14,17 +14,7 @@ typedef enum {
     LIFE
 } GameOfLifeRule;
 
-// Imprime o tabuleiro no formato esperado pela saída do programa
-void print_grid(const int *grid, int rows, int cols)
-{
-    for(int i = 0; i < rows; i++)
-    {
-        for(int j = 0; j < cols; j++)
-            printf("%d ", grid[i * cols + j]);
-
-        printf("\n");
-    }
-}
+// --- Clause database helpers ---
 
 // Adiciona uma nova cláusula à base dinâmica de cláusulas
 static void add_clause_row(ClauseDatabase *clauses, int clause_capacity)
@@ -56,6 +46,21 @@ static void add_clause_row(ClauseDatabase *clauses, int clause_capacity)
     clauses->count++;
 }
 
+// Adiciona uma cláusula completa à base dinâmica de cláusulas
+static void add_clause(ClauseDatabase *clauses, const int *literals, int literal_count)
+{
+    add_clause_row(clauses, literal_count+1);
+
+    int *clause = clauses->data[clauses->count-1];
+
+    clause[0] = literal_count;
+
+    for (int i = 0; i < literal_count; i++)
+        clause[i+1] = literals[i];
+}
+
+// --- SAT solver interface ---
+
 // Adiciona uma cláusula CNF ao solver Kissat
 static void write_clause(kissat *solver, const int *clause, int size)
 {
@@ -75,6 +80,8 @@ void write_all_clauses(kissat *solver, const ClauseDatabase *clauses)
         write_clause(solver, &clauses->data[i][1], literal_count);
     }
 }
+
+// --- Game of Life encoding ---
 
 // Verifica se uma célula está dentro da matriz
 static bool is_valid_cell(int row, int col, int rows, int cols)
@@ -265,19 +272,108 @@ void build_predecessor_cnf(const int *target_grid, ClauseDatabase *clauses, int 
     }
 }
 
-// Adiciona uma cláusula que bloqueia o modelo atual e seus supersets nas próximas buscas
-void add_model_blocking_clause(const int *live_cells, int live_cell_count,
-                               ClauseDatabase *clauses)
+// --- Cardinality constraints ---
+
+// Retorna a variável auxiliar correspondente a uma posição do contador sequencial
+static int counter_variable(int first_aux_variable, int row, int col, int max_live_cells)
 {
-    add_clause_row(clauses, live_cell_count+1);
-
-    int clause_index = 0;
-
-    for (int i = 0; i < live_cell_count; i++)
-        clauses->data[clauses->count-1][(clause_index++)+1] = -live_cells[i];
-
-    clauses->data[clauses->count-1][0] = clause_index;
+    return first_aux_variable + row * max_live_cells + col;
 }
+
+// Adiciona uma restrição de cardinalidade que limita o número de células vivas
+void add_live_cells_upper_bound(int cell_count, int max_live_cells, ClauseDatabase *clauses)
+{
+    if (max_live_cells >= cell_count)
+        return;
+
+    if (max_live_cells < 0) {
+        add_clause(clauses, NULL, 0);
+        return;
+    }
+
+    if (max_live_cells == 0) {
+        for (int variable = 1; variable <= cell_count; variable++)
+        {
+            int clause[] = {-variable};
+            add_clause(clauses, clause, 1);
+        }
+
+        return;
+    }
+
+    int first_aux_variable = cell_count + 1;
+
+    // s(i,j) indica que pelo menos j+1 das primeiras i+1 células estão vivas
+
+    int first_clause[] = {
+        -1,
+        counter_variable(first_aux_variable, 0, 0, max_live_cells)
+    };
+
+    add_clause(clauses, first_clause, 2);
+
+    for (int i = 1; i < cell_count-1; i++)
+    {
+        int variable = i + 1;
+
+        int clause1[] = {
+            -variable,
+            counter_variable(first_aux_variable, i, 0, max_live_cells)
+        };
+
+        add_clause(clauses, clause1, 2);
+
+        int clause2[] = {
+            -counter_variable(first_aux_variable, i-1, 0, max_live_cells),
+            counter_variable(first_aux_variable, i, 0, max_live_cells)
+        };
+
+        add_clause(clauses, clause2, 2);
+    }
+
+    for (int j = 1; j < max_live_cells; j++)
+    {
+        int initial_clause[] = {
+            -counter_variable(first_aux_variable, 0, j, max_live_cells)
+        };
+
+        add_clause(clauses, initial_clause, 1);
+
+        for (int i = 1; i < cell_count-1; i++)
+        {
+            int variable = i + 1;
+
+            int clause1[] = {
+                -variable,
+                -counter_variable(first_aux_variable, i-1, j-1, max_live_cells),
+                counter_variable(first_aux_variable, i, j, max_live_cells)
+            };
+
+            add_clause(clauses, clause1, 3);
+
+            int clause2[] = {
+                -counter_variable(first_aux_variable, i-1, j, max_live_cells),
+                counter_variable(first_aux_variable, i, j, max_live_cells)
+            };
+
+            add_clause(clauses, clause2, 2);
+        }
+    }
+
+    for (int i = 1; i < cell_count; i++)
+    {
+        int variable = i + 1;
+
+        int clause[] = {
+            -variable,
+            -counter_variable(first_aux_variable, i-1, max_live_cells-1, max_live_cells)
+        };
+
+        add_clause(clauses, clause, 2);
+    }
+}
+
+// --- Solution validation ---
 
 // Conta o número de vizinhos vivos de uma célula
 static int count_live_neighbors(const int *grid, int row, int col, int rows, int cols)
@@ -327,6 +423,37 @@ bool is_valid_predecessor(const int *predecessor, const int *target_grid, int ro
     }
 
     return true;
+}
+
+// --- Output ---
+
+// Imprime o tabuleiro no formato esperado pela saída do programa
+void print_grid(const int *grid, int rows, int cols)
+{
+    for(int i = 0; i < rows; i++)
+    {
+        for(int j = 0; j < cols; j++)
+            printf("%d ", grid[i * cols + j]);
+
+        printf("\n");
+    }
+}
+
+// --- Memory management ---
+
+// Remove cláusulas adicionadas após uma determinada posição
+void truncate_clauses(ClauseDatabase *clauses, size_t new_count)
+{
+    if (clauses == NULL || new_count >= clauses->count)
+        return;
+
+    for (size_t i = new_count; i < clauses->count; i++)
+    {
+        free(clauses->data[i]);
+        clauses->data[i] = NULL;
+    }
+
+    clauses->count = new_count;
 }
 
 // Libera a memória utilizada pela base dinâmica de cláusulas

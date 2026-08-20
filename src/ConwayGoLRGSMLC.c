@@ -2,6 +2,7 @@
 #include <stdlib.h>
 #include <signal.h>
 #include <unistd.h>
+#include <limits.h>
 #include <kissat.h>
 #include "rgsmlclib.h"
 
@@ -28,7 +29,7 @@ static void handle_timeout(int signal_number)
 
 int main() 
 {
-    int rows, cols, found_solution = 0;
+    int rows, cols, found_solution = 0, optimality_proven = 0;
 
     // Lê as dimensões do tabuleiro
     if (scanf("%d %d", &rows, &cols) != 2) {
@@ -43,7 +44,7 @@ int main()
 
     size_t cell_count = (size_t) rows * (size_t) cols;
 
-    int *target_grid, *best_predecessor, *live_cells;
+    int *target_grid, *best_predecessor;
     ClauseDatabase clauses = {0};
 
     // Alocando espaço para o tabuleiro alvo
@@ -105,25 +106,17 @@ int main()
         return EXIT_FAILURE;
     }
 
-    // Alocando espaço para o vetor de células vivas
-    live_cells = malloc(cell_count * sizeof *live_cells);
-
-    if (live_cells == NULL) {
-        fprintf(stderr, "Error: Failed to allocate memory for the live-cell buffer.\n");
-        free(target_grid);
-        free(best_predecessor);
-        return EXIT_FAILURE;
-    }
-
     // Cria as cláusulas CNF que representam os predecessores válidos do tabuleiro alvo
     build_predecessor_cnf(target_grid, &clauses, rows, cols);
+
+    // Guarda a quantidade de cláusulas pertencentes à codificação original
+    size_t base_clause_count = clauses.count;
 
     // Configura o tratamento do limite de tempo
     if (signal(SIGALRM, handle_timeout) == SIG_ERR) {
         fprintf(stderr, "Error: Failed to configure timeout handler.\n");
         free(target_grid);
         free(best_predecessor);
-        free(live_cells);
         free_clauses(&clauses);
         return EXIT_FAILURE;
     }
@@ -146,7 +139,7 @@ int main()
     int result = kissat_solve(solver);
     active_solver = NULL;
 
-    int min_live_cells = rows*cols;
+    int min_live_cells = INT_MAX;
 
     while (result == SAT_RESULT_SAT)
     {
@@ -162,7 +155,7 @@ int main()
                 int value = kissat_value(solver, variable); // Recupera o valor do solver
 
                 if (value > 0)
-                    live_cells[count_live_cells++] = value;
+                    count_live_cells++;
             }
         }
 
@@ -179,6 +172,11 @@ int main()
             }
         }
 
+        if (count_live_cells == 0) {
+            optimality_proven = 1;
+            break;
+        }
+
         // Interrompe a otimização caso o limite tenha sido atingido após processar
         // a solução atual
         if (timeout_reached) {
@@ -188,11 +186,15 @@ int main()
 
         kissat_release(solver);
 
+        // Remove o limite anterior e restaura apenas a CNF original
+        truncate_clauses(&clauses, base_clause_count);
+
+        // Exige que a próxima solução tenha menos células vivas
+        add_live_cells_upper_bound(rows*cols, count_live_cells-1, &clauses);
+
         solver = kissat_init();
 
         kissat_set_option(solver, "quiet", 1);
-
-        add_model_blocking_clause(live_cells, count_live_cells, &clauses);
 
         write_all_clauses(solver, &clauses);
 
@@ -207,6 +209,9 @@ int main()
         active_solver = NULL;
     }
 
+    if (found_solution && result == SAT_RESULT_UNSAT)
+        optimality_proven = 1;
+
     alarm(0);
     active_solver = NULL;
     
@@ -215,11 +220,11 @@ int main()
     int exit_status = EXIT_SUCCESS;
 
     if (!found_solution) {
-        if (timeout_reached) {
+        if (result == SAT_RESULT_UNSAT) {
+            printf("UNSAT\n");
+        } else if (timeout_reached) {
             fprintf(stderr, "Error: Time limit reached before a predecessor was found.\n");
             exit_status = EXIT_FAILURE;
-        } else if (result == SAT_RESULT_UNSAT) {
-            printf("UNSAT\n");
         } else {
             fprintf(stderr, "Error: SAT solver returned an unknown result.\n");
             exit_status = EXIT_FAILURE;
@@ -228,8 +233,13 @@ int main()
         fprintf(stderr, "Error: Solver produced an invalid predecessor.\n");
         exit_status = EXIT_FAILURE;
     } else {
-        if (timeout_reached)
-            fprintf(stderr, "Warning: Time limit reached before optimality was proven.\n");
+        if (!optimality_proven) {
+            if (timeout_reached) {
+                fprintf(stderr, "Warning: Time limit reached before optimality was proven.\n");
+            } else {
+                fprintf(stderr, "Warning: Search ended before optimality was proven.\n");
+            }
+        }
 
         printf("%d %d\n", rows, cols);
         print_grid(best_predecessor, rows, cols);
@@ -237,7 +247,6 @@ int main()
 
     free(target_grid);
     free(best_predecessor);
-    free(live_cells);
 
     // Libera todas as cláusulas e a matriz que as armazena
     free_clauses(&clauses);

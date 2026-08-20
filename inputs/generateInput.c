@@ -10,7 +10,6 @@ int main(int argc, char *argv[])
         return 1;
     }
 
-
     FILE *input_file;
     int n,m;
 
@@ -30,16 +29,17 @@ int main(int argc, char *argv[])
     // Generating the input file
     fprintf(input_file, "%d %d\n", n, m);
     for(int i = 0; i < n; i++) {
-        for(int j = 0; j < m; j++) {
+        for(int j = 0; j < m; j++)
+        {
             if(i == 0 || i == n-1 || j == 0 || j == m-1)
                 fprintf(input_file, "%d ", 0);
             else
                 fprintf(input_file, "%d ", rand() % 2);
         }
+
         fprintf(input_file, "\n");
     }
 
     // Closing the input file
     fclose(input_file);
-
 }
