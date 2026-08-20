@@ -32,14 +32,14 @@ static void add_clause_row(int ***clauses, int *clause_count, int clause_capacit
     (*clauses) = realloc((*clauses), ((*clause_count) + 1) * sizeof(int *));
     if ((*clauses) == NULL) {
         fprintf(stderr, "Error: Failed to reallocate memory for clauses.\n");
-        exit(1);
+        exit(EXIT_FAILURE);
     }
 
     // Aloca memória para a nova linha com o número fixo de colunas
     (*clauses)[(*clause_count)] = malloc(clause_capacity * sizeof(int));
     if ((*clauses)[*clause_count] == NULL) {
         fprintf(stderr, "Error: Failed to allocate memory for a clause.\n");
-        exit(1);
+        exit(EXIT_FAILURE);
     }
 
     // Incrementa o número de linhas
@@ -47,7 +47,7 @@ static void add_clause_row(int ***clauses, int *clause_count, int clause_capacit
 }
 
 // Adiciona uma cláusula CNF ao solver Kissat
-static void write_clause(kissat *solver, int *clause, int size)
+static void write_clause(kissat *solver, const int *clause, int size)
 {
     for(int i = 0; i < size; i++)
         kissat_add(solver, clause[i]);
@@ -61,12 +61,8 @@ void write_all_clauses(kissat *solver, int clause_count, int **clauses)
     for (int i = 0; i < clause_count; i++)
     {
         int literal_count = clauses[i][0];
-        int clause[literal_count];
 
-        for (int j = 0; j < literal_count; j++)
-            clause[j] = clauses[i][j+1];
-
-        write_clause(solver, clause, literal_count);
+        write_clause(solver, &clauses[i][1], literal_count);
     }
 }
 
@@ -232,7 +228,7 @@ static void encode_rule_constraints(int row, int col, int rows, int cols, int **
         default:
 
             fprintf(stderr, "Error: Unknown Game of Life rule.\n");
-            exit(1);
+            exit(EXIT_FAILURE);
 
         break;
 
